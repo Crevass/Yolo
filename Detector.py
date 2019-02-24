@@ -16,7 +16,7 @@ class Detector(object):
 		self.final_h = net.final_h
 		self.box_num = net.box_num
 		
-		self.threshold = 0.2
+		self.threshold = 0.17
 		self.iou_threshold = 0.5
 		
 		self.boundary1 = self.final_h * self.final_w * self.class_num
@@ -58,7 +58,6 @@ class Detector(object):
 		print("weights restored")
 
 	def draw_result(self, img, result):
-		
 		for i in range(len(result)):
 			x = int(result[i][1])
 			y = int(result[i][2])
@@ -189,14 +188,37 @@ class Detector(object):
 	def image_detector(self, img_path, wait=0):
 		image = cv2.imread(img_path)
 		result = self.detect(image)
-		#print(result)
+		print(result)
 		self.draw_result(image, result)
 		cv2.imshow('Image', image)
-		cv2.waitKey(wait)
+		c = cv2.waitKey(wait)
+		if c == 27:
+			cv2.destroyAllWindows()
+			return
 
+	def camera_detect(self, cap, wait=10):
+		ret, frame = cap.read()
+		fourcc = cv2.VideoWriter_fourcc('m','p','4','v')
+		out = cv2.VideoWriter("record.mp4", fourcc, 25, (640, 480))
+		while ret:
+			#ret, frame = cap.read()
+			result = self.detect(frame)
+			self.draw_result(frame, result)
+			out.write(frame)
+			cv2.imshow("Video", frame)
+			c = cv2.waitKey(wait)
+			if c == 27:
+				break
+			ret, frame = cap.read()
+		cap.release()
+		out.release()
+		cv2.destroyAllWindows()
+		return
 
 if __name__ == '__main__':
-	path = '/home/wang/Research/MODELS/Yolo/dataset/VOCdevkit/VOC2012/'
+	#path = '/home/wang/Research/MODELS/Yolo/dataset/VOCdevkit/VOC2012/'
+	path = ['/home/wang/Research/MODELS/Yolo/dataset/VOCdevkit/VOC2012/',
+			'/home/wang/Research/MODELS/Yolo/dataset/VOCdevkit/VOC2007']
 	scale_width = 448
 	scale_height = 448
 
@@ -211,7 +233,7 @@ if __name__ == '__main__':
 	is_training = False
 	batch_size = 45
 
-	weights_file = "./result 2018_9_13/saver_dir/final_weights.ckpt"
+	weights_file = "./saver_dir2018-09-19/final_weights.ckpt"
 	#weights_file = "YOLO_small.ckpt"
 	model = MODEL(scale_width, scale_height, final_w, fianl_h, class_num, box_num, is_training, batch_size)
 	file_reader = Reader(path, box_num, class_num, scale_width, scale_height, final_w, fianl_h)
@@ -222,6 +244,11 @@ if __name__ == '__main__':
 
 	img_path = file_reader.images_paths[index]
 
+	# detect image
 	#img_path = "./2007_001239.jpg"
-	print("img path: %s" %img_path)
-	detector.image_detector(img_path)
+	#print("img path: %s" %img_path)
+	#detector.image_detector(img_path)
+	
+	# detect video from a web camera
+	cap = cv2.VideoCapture(-1)
+	detector.camera_detect(cap, wait=5)

@@ -3,13 +3,13 @@ import tensorflow as tf
 from Yolo_model import MODEL
 from reader import Reader
 import cv2
-
+from datetime import datetime
 class Trainer(object):
 	def __init__(self, net, file_reader, batch_size):
 		self.net = net
 		self.file_reader = file_reader
 
-		self.init_lr = 0.001
+		self.init_lr = 0.0001
 		self.decay_steps = 30000
 		self.decay_rate = 0.1
 		self.staircase = True
@@ -19,21 +19,22 @@ class Trainer(object):
 		self.variable_to_restore = tf.global_variables()
 		self.saver = tf.train.Saver(self.variable_to_restore, max_to_keep=None)
 
+		date = datetime.now().strftime("%Y-%m-%d")
 		self.weights_file = "./YOLO_small.ckpt"
 		#self.weights_file = "./saver_dir/final_weights.ckpt"
 		#self.weights_file = None
 		self.retrain_yolo = True
-		self.ckpt_path = "./saver_dir_20180918/"
-		self.log_dir = "./log"
+		self.ckpt_path = "./saver_dir" + date + "/"
+		self.log_dir = "./log" + date
 		self.summary_op = tf.summary.merge_all()
 		self.writer = tf.summary.FileWriter(self.log_dir, flush_secs=60)
 
 		self.global_step = tf.train.create_global_step()
-		"""
+		
 		self.learning_rate = tf.train.exponential_decay(
 				self.init_lr, self.global_step, self.decay_steps, self.decay_rate, self.staircase, name='learning_rate')
-		"""
-		self.learning_rate = tf.placeholder(dtype=tf.float32, name='learning_rate')
+		
+		#self.learning_rate = tf.placeholder(dtype=tf.float32, name='learning_rate')
 		self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate, epsilon=1e-5)
 		self.train_op = self.optimizer.minimize(
 						loss=self.net.total_loss,
@@ -50,10 +51,13 @@ class Trainer(object):
 			print("no pretrained weights loaded.")
 		
 		if self.retrain_yolo:
-			fc33 = tf.get_variable('yolo/fc_33')
-			fc34 = tf.get_variable('yolo/fc_34')
-			fc36 = tf.get_variable('yolo/fc_36')
-			var_list = [fc33, fc34, fc36]
+			fc33 = tf.global_variables(scope='yolo/fc_33')
+			fc34 = tf.global_variables(scope='yolo/fc_34')
+			fc36 = tf.global_variables(scope='yolo/fc_36')
+			var_list = []
+			var_list.extend(fc33)
+			var_list.extend(fc34)
+			var_list.extend(fc36)
 			self.sess.run(tf.variables_initializer(var_list))
 			print("yolo layers initialzed")
 
@@ -62,7 +66,7 @@ class Trainer(object):
 	def train(self):
 		data_num = len(self.file_reader.images_paths)
 		EPISODE_LIMIT = data_num // self.batch_size
-		MAX_EPOCH = 155
+		MAX_EPOCH = 100
 
 		print("Data: %i" %data_num)
 		print("batch_size: %i" %self.batch_size)
@@ -71,34 +75,33 @@ class Trainer(object):
 		print("Start training...")
 
 		step = 0
-		lr = 1e-4
+		#lr = 1e-3
 		for epoch in range(MAX_EPOCH):
-			if epoch < 20:
-				lr = 1e-4
-			elif epoch >=30 and epoch < 60:
-				lr = 1e-3
-			elif epoch >= 105 and epoch <135:
-				lr = 1e-4
-			else:
-				lr = 1e-5
+			#if epoch < 20:
+			#	lr = 1e-4 + (1e-3 - 1e-4) / 20 * epoch
+			#elif epoch >=30 and epoch < 60:
+			#	lr = 1e-3
+			#elif epoch >= 105 and epoch <135:
+			#	lr = 1e-4
+			#else:
+			#	lr = 1e-4 / 2 
 
 			for episode in range(EPISODE_LIMIT):
 				x_batch, y_batch = self.file_reader.get_batch(self.batch_size)
 				if step % 20 == 0:
 					summary_str, loss, _ = self.sess.run(
 						[self.summary_op, self.net.total_loss, self.train_op],
-						feed_dict={self.net.images: x_batch, self.net.labels: y_batch,
-									self.learning_rate: lr})
+						feed_dict={self.net.images: x_batch, self.net.labels: y_batch
+									})
 				
-					print("epoch: %i, episode: %i, loss: %.4f" %(epoch, episode, loss))
 					self.writer.add_summary(summary_str, step)
 				else:
 					loss, _ = self.sess.run(
 						[self.net.total_loss, self.train_op],
-						feed_dict={self.net.images: x_batch, self.net.labels: y_batch,
-									self.learning_rate: lr})
+						feed_dict={self.net.images: x_batch, self.net.labels: y_batch
+									})
 				
-					print("epoch: %i, episode: %i, loss: %.4f" %(epoch, episode, loss))
+				print("epoch: %i, episode: %i, loss: %.4f, lr: %.5f" %(epoch, episode, loss, self.learning_rate.eval(session=self.sess)))
 				step += 1
 
 			if (epoch + 1) % 20 == 0:
@@ -110,7 +113,7 @@ class Trainer(object):
 
 
 if __name__ == '__main__':
-	path = '/home/wang/Research/MODELS/Yolo/dataset/VOCdevkit/VOC2012/'
+	path = '/home/wang/Research/MODELS/Yolo/dataset/VOCdevkit/VOC2007'
 	#path = ['/home/wang/Research/MODELS/Yolo/dataset/VOCdevkit/VOC2012/',
 	#		'/home/wang/Research/MODELS/Yolo/dataset/VOCdevkit/VOC2007']
 	scale_width = 448
